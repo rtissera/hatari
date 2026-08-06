@@ -33,6 +33,37 @@ static char pending_state_path[PATH_MAX];
 static char system_directory[PATH_MAX];
 static char tos_path[PATH_MAX];
 
+static void retro_set_memory_maps(void)
+{
+	static struct retro_memory_descriptor descriptors[2];
+	struct retro_memory_map map;
+	unsigned count = 0;
+
+	if (!environment_cb)
+		return;
+	memset(descriptors, 0, sizeof(descriptors));
+	if (STRam && STRamEnd)
+	{
+		descriptors[count].ptr = STRam;
+		descriptors[count].len = STRamEnd;
+		descriptors[count].flags = RETRO_MEMDESC_SYSTEM_RAM |
+		                            RETRO_MEMDESC_BIGENDIAN;
+		++count;
+	}
+	if (TTmemory && TTmem_size)
+	{
+		descriptors[count].ptr = TTmemory;
+		descriptors[count].start = 0x01000000;
+		descriptors[count].len = TTmem_size;
+		descriptors[count].flags = RETRO_MEMDESC_SYSTEM_RAM |
+		                            RETRO_MEMDESC_BIGENDIAN;
+		++count;
+	}
+	map.descriptors = descriptors;
+	map.num_descriptors = count;
+	environment_cb(RETRO_ENVIRONMENT_SET_MEMORY_MAPS, &map);
+}
+
 /* Hatari's native snapshot code operates on files.  Keep that implementation
  * as the single source of truth and bridge it to libretro's memory API here. */
 static bool snapshot_path(char *path, size_t path_size)
@@ -108,6 +139,7 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 {
 	static enum retro_pixel_format pixelformat = RETRO_PIXEL_FORMAT_XRGB8888;
 	static bool no_game = true;
+	static unsigned serialization_quirks = RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE;
 	static struct retro_controller_description controller_types[] = {
 		{ "RetroPad", RETRO_DEVICE_JOYPAD }
 	};
@@ -140,6 +172,7 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 
 	/* Hatari can start without game disks */
 	cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
+	cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &serialization_quirks);
 	cb(RETRO_ENVIRONMENT_SET_CONTROLLER_INFO, (void *)controller_info);
 	cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, (void *)input_descriptors);
 	RetroOptions_SetEnvironment(cb);
@@ -201,6 +234,7 @@ RETRO_API void retro_init(void)
 		Main_SetPreInitHook(RetroOptions_Apply);
 		Main_Init(argc, argv);
 	}
+	retro_set_memory_maps();
 	has_cpu_config_changed = true;
 }
 
