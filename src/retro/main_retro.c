@@ -188,11 +188,11 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 	static const char subsystem_extensions[] =
 		"st|msa|dim|stx|scp|kfs|ipf|zip|gz";
 	static struct retro_subsystem_rom_info subsystem_roms[] = {
-		{ "Floppy disk", subsystem_extensions, true, false, true, NULL, 0 },
-		{ "Additional floppy disk", subsystem_extensions, true, false, false, NULL, 0 }
+		{ "Floppy disk 1", subsystem_extensions, true, false, true, NULL, 0 },
+		{ "Floppy disk 2 (drive A swap list)", subsystem_extensions, true, false, false, NULL, 0 }
 	};
 	static struct retro_subsystem_info subsystems[] = {
-		{ "Hatari floppy disk set", "floppies", subsystem_roms, 2, 1 },
+		{ "Hatari floppy disk swap list (drive A)", "floppies", subsystem_roms, 2, 1 },
 		{ NULL, NULL, NULL, 0, 0 }
 	};
 

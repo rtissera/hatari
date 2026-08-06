@@ -57,6 +57,7 @@ set(ENABLE_TRACING 1
     CACHE BOOL "Enable tracing messages for debugging")
 
 find_path(LIBRETRO_INCLUDE_DIR libretro.h
+          HINTS ${CMAKE_SOURCE_DIR}/libretro
           PATH_SUFFIXES libretro libretro-common)
 
 if (LIBRETRO_INCLUDE_DIR)
