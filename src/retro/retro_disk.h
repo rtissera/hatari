@@ -11,6 +11,8 @@
 
 void RetroDisk_SetEnvironment(retro_environment_t cb);
 bool RetroDisk_LoadGame(const struct retro_game_info *game);
+bool RetroDisk_LoadGameSpecial(const struct retro_game_info *info,
+		size_t num_info);
 void RetroDisk_UnloadGame(void);
 
 #endif

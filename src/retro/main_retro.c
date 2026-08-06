@@ -185,6 +185,16 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 		{ 0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_RIGHT, "Mouse Right Button" },
 		{ 0 }
 	};
+	static const char subsystem_extensions[] =
+		"st|msa|dim|stx|scp|kfs|ipf|zip|gz";
+	static struct retro_subsystem_rom_info subsystem_roms[] = {
+		{ "Floppy disk", subsystem_extensions, true, false, true, NULL, 0 },
+		{ "Additional floppy disk", subsystem_extensions, true, false, false, NULL, 0 }
+	};
+	static struct retro_subsystem_info subsystems[] = {
+		{ "Hatari floppy disk set", "floppies", subsystem_roms, 2, 1 },
+		{ NULL, NULL, NULL, 0, 0 }
+	};
 
 	environment_cb = cb;
 
@@ -197,6 +207,7 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 	cb(RETRO_ENVIRONMENT_SET_CONTROLLER_INFO, (void *)controller_info);
 	cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, (void *)input_descriptors);
 	RetroOptions_SetEnvironment(cb);
+	cb(RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO, subsystems);
 	RetroDisk_SetEnvironment(cb);
 	RetroVfs_SetEnvironment(cb);
 }
@@ -280,21 +291,6 @@ RETRO_API void retro_get_system_info(struct retro_system_info *info)
 	info->library_version = HATARI_VERSION;
 	info->need_fullpath = true;
 	info->valid_extensions = "st|msa|dim|stx|scp|kfs|ipf|zip|gz|m3u|m3u8|hd|hdf|hdi|vhd|sthd";
-}
-
-RETRO_API void retro_get_subsystem_info(const struct retro_subsystem_info **info)
-{
-	static const char extensions[] = "st|msa|dim|stx|scp|kfs|ipf|zip|gz";
-	static const struct retro_subsystem_rom_info roms[] = {
-		{ "Floppy disk", extensions, true, false, true, NULL, 0 },
-		{ "Additional floppy disk", extensions, true, false, false, NULL, 0 }
-	};
-	static const struct retro_subsystem_info subsystems[] = {
-		{ "Hatari floppy disk set", "floppies", roms, 2, 1 },
-		{ NULL, NULL, NULL, 0, 0 }
-	};
-
-	*info = subsystems;
 }
 
 RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
