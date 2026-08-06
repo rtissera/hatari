@@ -23,6 +23,8 @@ const char Keymap_fileid[] = "Hatari keymap.c";
 /* if not able to map */
 #define ST_NO_SCANCODE 0xff
 
+static uint16_t active_modifiers;
+
 
 /**
  * Default function for mapping host keycode to ST scan code.
@@ -170,7 +172,6 @@ static uint8_t Keymap_SymbolicToStScanCode_default(unsigned int hostkey)
 static RETRO_CALLCONV
 void Keymap_UpdateModifiers(uint16_t modifiers)
 {
-	static uint16_t active;
 	static const struct {
 		uint16_t flag;
 		uint8_t scancode;
@@ -183,14 +184,14 @@ void Keymap_UpdateModifiers(uint16_t modifiers)
 
 	for (i = 0; i < sizeof(modifier_map) / sizeof(modifier_map[0]); ++i)
 	{
-		bool was_down = (active & modifier_map[i].flag) != 0;
+		bool was_down = (active_modifiers & modifier_map[i].flag) != 0;
 		bool is_down = (modifiers & modifier_map[i].flag) != 0;
 		if (was_down == is_down)
 			continue;
 		IKBD_PressSTKey(modifier_map[i].scancode, is_down);
 		Keyboard.KeyStates[modifier_map[i].scancode] = is_down;
 	}
-	active = modifiers;
+	active_modifiers = modifiers;
 }
 
 static RETRO_CALLCONV
@@ -231,6 +232,7 @@ void Keymap_Init(void)
 	{
 		Keymap_Callback
 	};
+	active_modifiers = 0;
 	environment_cb(RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK, (void*)&kb_cb);
 }
 
@@ -293,5 +295,5 @@ void Keymap_SetCountry(int countrycode)
  */
 bool Keymap_IsShiftPressed(void)
 {
-	return false;
+	return (active_modifiers & RETROKMOD_SHIFT) != 0;
 }
