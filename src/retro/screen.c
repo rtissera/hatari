@@ -114,6 +114,11 @@ void Screen_GetDesktopSize(int *width, int *height)
 bool Screen_SetVideoSize(int width, int height, bool bForceChange)
 {
 	struct retro_system_av_info av_info;
+	size_t framebuffer_size;
+
+	if (width <= 0 || height <= 0 ||
+	    (size_t)width > SIZE_MAX / (size_t)height / sizeof(*framebuffer))
+		return false;
 
 	if (width == screen_width && height == screen_height && !bForceChange)
 		return false;
@@ -121,7 +126,8 @@ bool Screen_SetVideoSize(int width, int height, bool bForceChange)
 	if (framebuffer)
 		free(framebuffer);
 
-	framebuffer = malloc(width * height * sizeof(*framebuffer));
+	framebuffer_size = (size_t)width * (size_t)height * sizeof(*framebuffer);
+	framebuffer = malloc(framebuffer_size);
 	if (!framebuffer)
 	{
 		perror("malloc in Screen_SetVideoSize");
@@ -176,6 +182,10 @@ void Screen_Init(void)
  */
 void Screen_UnInit(void)
 {
+	free(framebuffer);
+	framebuffer = NULL;
+	screen_width = 0;
+	screen_height = 0;
 }
 
 
