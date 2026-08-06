@@ -20,7 +20,7 @@ savestate = "true"
 cheats = "false"
 memory_descriptors = "true"
 libretro_saves = "false"
-load_subsystem = "false"
+load_subsystem = "true"
 hw_render = "false"
 needs_fullpath = "true"
 

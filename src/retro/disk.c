@@ -297,9 +297,13 @@ static bool RETRO_CALLCONV disk_get_image_label(unsigned index, char *label,
 		size_t length)
 {
 	const char *slash;
+	const char *backslash;
 	if (!disk_get_image_path(index, label, length))
 		return false;
 	slash = strrchr(label, '/');
+	backslash = strrchr(label, '\\');
+	if (!slash || (backslash && backslash > slash))
+		slash = backslash;
 	if (slash)
 		memmove(label, slash + 1, strlen(slash + 1) + 1);
 	return true;
@@ -346,6 +350,39 @@ bool RetroDisk_LoadGame(const struct retro_game_info *game)
 	else if (!add_path(game->path))
 		return false;
 
+	image_index[0] = 0;
+	if (initial_image < image_count &&
+	    (!initial_image_path[0] ||
+	     !strcmp(initial_image_path, image_paths[initial_image])))
+		image_index[0] = initial_image;
+	initial_image = RETRO_DISK_MAX;
+	initial_image_path[0] = '\0';
+	return disk_set_eject_state(false);
+}
+
+bool RetroDisk_LoadGameSpecial(const struct retro_game_info *info,
+		size_t num_info)
+{
+	size_t index;
+
+	if (!info || !num_info)
+		return false;
+	if (!ejected)
+		disk_set_eject_state(true);
+	clear_images();
+	image_index[0] = image_index[1] = RETRO_DISK_MAX;
+	selected_drive = 0;
+	ejected = true;
+	Floppy_SetDiskFileNameNone(0);
+	Floppy_SetDiskFileNameNone(1);
+	for (index = 0; index < num_info; ++index)
+	{
+		if (!info[index].path || !add_path(info[index].path))
+		{
+			clear_images();
+			return false;
+		}
+	}
 	image_index[0] = 0;
 	if (initial_image < image_count &&
 	    (!initial_image_path[0] ||

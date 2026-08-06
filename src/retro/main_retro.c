@@ -178,6 +178,11 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A, "Joystick 1 Fire 3" },
 		{ 1, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X, "Joystick 1 Analog X" },
 		{ 1, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y, "Joystick 1 Analog Y" },
+		{ 0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X, "Mouse X" },
+		{ 0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y, "Mouse Y" },
+		{ 0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_LEFT, "Mouse Left Button" },
+		{ 0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_MIDDLE, "Mouse Middle Button" },
+		{ 0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_RIGHT, "Mouse Right Button" },
 		{ 0 }
 	};
 
@@ -275,6 +280,21 @@ RETRO_API void retro_get_system_info(struct retro_system_info *info)
 	info->library_version = HATARI_VERSION;
 	info->need_fullpath = true;
 	info->valid_extensions = "st|msa|dim|stx|scp|kfs|ipf|zip|gz|m3u|m3u8|hd|hdf|hdi|vhd|sthd";
+}
+
+RETRO_API void retro_get_subsystem_info(const struct retro_subsystem_info **info)
+{
+	static const char extensions[] = "st|msa|dim|stx|scp|kfs|ipf|zip|gz";
+	static const struct retro_subsystem_rom_info roms[] = {
+		{ "Floppy disk", extensions, true, false, true, NULL, 0 },
+		{ "Additional floppy disk", extensions, true, false, false, NULL, 0 }
+	};
+	static const struct retro_subsystem_info subsystems[] = {
+		{ "Hatari floppy disk set", "floppies", roms, 2, 1 },
+		{ NULL, NULL, NULL, 0, 0 }
+	};
+
+	*info = subsystems;
 }
 
 RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
@@ -443,7 +463,11 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 
 RETRO_API bool retro_load_game_special(unsigned game_type, const struct retro_game_info *info, size_t num_info)
 {
-	return false;
+	if (game_type != 1 || !info || !num_info)
+		return false;
+	RetroDisk_UnloadGame();
+	RetroHardDisk_UnloadGame();
+	return RetroDisk_LoadGameSpecial(info, num_info);
 }
 
 RETRO_API void retro_unload_game(void)
