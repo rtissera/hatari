@@ -69,6 +69,13 @@ const char Main_fileid[] = "Hatari main.c";
 
 bool bQuitProgram = false;                /* Flag to quit program cleanly */
 bool bEmulationActive = true;             /* Run emulation when started */
+static Main_PreInitHook Main_PreInit;
+
+
+void Main_SetPreInitHook(Main_PreInitHook hook)
+{
+	Main_PreInit = hook;
+}
 
 
 /**
@@ -313,6 +320,11 @@ void Main_Init(int argc, char *argv[])
 
 	/* Now load the values from the configuration file */
 	Main_LoadInitialConfig();
+
+	/* Frontends may apply settings after defaults and config files have been
+	 * loaded, but before the configuration is validated and subsystems start. */
+	if (Main_PreInit)
+		Main_PreInit();
 
 	/* Check for any passed parameters */
 	if (!Opt_ParseParameters(argc, (const char * const *)argv, &exitval))

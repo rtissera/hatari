@@ -34,8 +34,8 @@ static void GuiEvent_HandleMouseMotion(void)
 	static int ax = 0, ay = 0;
 	int dx, dy;
 
-	dx  = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
-	dy  = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
+	dx  = Retro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+	dy  = Retro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
 
 	/* Ignore motion when position has changed right after a reset or TOS
 	 * (especially version 4.04) might get confused and play key clicks */
@@ -69,9 +69,9 @@ static void GuiEvent_HandleMouseMotion(void)
 
 static void GuiEvent_HandleMouseButton(void)
 {
-	bool bl = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_LEFT);
-	bool bm = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_MIDDLE);
-	bool br = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_RIGHT);
+	bool bl = Retro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_LEFT);
+	bool bm = Retro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_MIDDLE);
+	bool br = Retro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_RIGHT);
 
 	if (bl)
 	{

@@ -63,6 +63,8 @@ bool Main_UnPauseEmulation(void);
 void Main_RequestQuit(int exitval);
 void Main_SetQuitValue(int exitval);
 void Main_ErrorExit(const char *msg1, const char *msg2, int errval);
+typedef void (*Main_PreInitHook)(void);
+void Main_SetPreInitHook(Main_PreInitHook hook);
 void Main_Init(int argc, char *argv[]);
 void Main_UnInit(void);
 

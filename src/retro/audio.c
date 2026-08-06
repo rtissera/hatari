@@ -92,6 +92,15 @@ void Audio_Unlock(void)
 			                      (nGeneratedSamples - samples_at_end));
 		}
 	}
+	else if (bPlayingBuffer && nGeneratedSamples && audio_sample_cb)
+	{
+		int sample;
+		for (sample = 0; sample < nGeneratedSamples; ++sample)
+			audio_sample_cb(AudioMixBuffer[(AudioMixBuffer_pos_read + sample) &
+		                               AUDIOMIXBUFFER_SIZE_MASK][0],
+			               AudioMixBuffer[(AudioMixBuffer_pos_read + sample) &
+		                               AUDIOMIXBUFFER_SIZE_MASK][1]);
+	}
 
 	AudioMixBuffer_pos_read = (AudioMixBuffer_pos_read + nGeneratedSamples)
 	                          & AUDIOMIXBUFFER_SIZE_MASK;

@@ -8,6 +8,7 @@
 */
 
 #include <libretro.h>
+#include <string.h>
 
 #include "main.h"
 #include "main_retro.h"
@@ -94,31 +95,36 @@ bool JoyUI_ReadJoystick(int id, JOYREADING *joyread)
 	 * TODO: Make the mapping of all ports configurable! */
 	if (id == 0 || id == 1)
 		id ^= 1;
+	if (!Retro_ControllerConnected((unsigned)id))
+	{
+		memset(joyread, 0, sizeof(*joyread));
+		return false;
+	}
 
-	joyread->XPos = input_state_cb(id, RETRO_DEVICE_ANALOG,
+	joyread->XPos = Retro_InputState(id, RETRO_DEVICE_ANALOG,
 	                               RETRO_DEVICE_INDEX_ANALOG_LEFT,
 	                               RETRO_DEVICE_ID_ANALOG_X);
-	joyread->YPos = input_state_cb(id, RETRO_DEVICE_ANALOG,
+	joyread->YPos = Retro_InputState(id, RETRO_DEVICE_ANALOG,
 	                               RETRO_DEVICE_INDEX_ANALOG_LEFT,
 	                               RETRO_DEVICE_ID_ANALOG_Y);
 
 	/* Override axis readings with hats */
-	if (input_state_cb(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT))
+	if (Retro_InputState(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT))
 		joyread->XPos = -32768;
-	if (input_state_cb(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT))
+	if (Retro_InputState(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT))
 		joyread->XPos = 32767;
-	if (input_state_cb(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP))
+	if (Retro_InputState(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP))
 		joyread->YPos = -32768;
-	if (input_state_cb(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN))
+	if (Retro_InputState(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN))
 		joyread->YPos = 32767;
 
 	/* Buttons */
 	joyread->Buttons = 0;
-	if (input_state_cb(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B))
+	if (Retro_InputState(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B))
 		joyread->Buttons |= JOYREADING_BUTTON1;
-	if (input_state_cb(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y))
+	if (Retro_InputState(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y))
 		joyread->Buttons |= JOYREADING_BUTTON2;
-	if (input_state_cb(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A))
+	if (Retro_InputState(id, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A))
 		joyread->Buttons |= JOYREADING_BUTTON3;
 
 	return true;

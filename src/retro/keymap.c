@@ -168,11 +168,38 @@ static uint8_t Keymap_SymbolicToStScanCode_default(unsigned int hostkey)
 
 
 static RETRO_CALLCONV
+void Keymap_UpdateModifiers(uint16_t modifiers)
+{
+	static uint16_t active;
+	static const struct {
+		uint16_t flag;
+		uint8_t scancode;
+	} modifier_map[] = {
+		{ RETROKMOD_SHIFT, ST_LSHIFT },
+		{ RETROKMOD_CTRL, ST_CONTROL },
+		{ RETROKMOD_ALT, ST_ALTERNATE }
+	};
+	unsigned i;
+
+	for (i = 0; i < sizeof(modifier_map) / sizeof(modifier_map[0]); ++i)
+	{
+		bool was_down = (active & modifier_map[i].flag) != 0;
+		bool is_down = (modifiers & modifier_map[i].flag) != 0;
+		if (was_down == is_down)
+			continue;
+		IKBD_PressSTKey(modifier_map[i].scancode, is_down);
+		Keyboard.KeyStates[modifier_map[i].scancode] = is_down;
+	}
+	active = modifiers;
+}
+
+static RETRO_CALLCONV
 void Keymap_Callback(bool down, unsigned int keycode, uint32_t character,
                      uint16_t modifiers)
 {
 	uint8_t STScanCode;
 
+	Keymap_UpdateModifiers(modifiers);
 	STScanCode = Keymap_SymbolicToStScanCode_default(keycode);
 	if (STScanCode != ST_NO_SCANCODE)
 	{

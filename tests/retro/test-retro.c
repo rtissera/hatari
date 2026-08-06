@@ -19,6 +19,9 @@ static unsigned int (*lr_api_version)(void);
 static void (*lr_init)(void);
 static void (*lr_deinit)(void);
 static void (*lr_run)(void);
+static bool (*lr_load_game)(const struct retro_game_info *game);
+static void *(*lr_get_memory_data)(unsigned id);
+static size_t (*lr_get_memory_size)(unsigned id);
 
 static bool screen_refreshed;
 
@@ -49,6 +52,9 @@ static void init_funcs(void *dlh)
 	lr_init = test_dlsym(dlh, "retro_init");
 	lr_deinit = test_dlsym(dlh, "retro_deinit");
 	lr_run = test_dlsym(dlh, "retro_run");
+	lr_load_game = test_dlsym(dlh, "retro_load_game");
+	lr_get_memory_data = test_dlsym(dlh, "retro_get_memory_data");
+	lr_get_memory_size = test_dlsym(dlh, "retro_get_memory_size");
 }
 
 
@@ -58,9 +64,17 @@ static bool env_cb(unsigned cmd, void *data)
 	{
 	 case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
 	 case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
+	 case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
+	 case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
+	 case RETRO_ENVIRONMENT_SET_VARIABLES:
+	 case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE:
+	 case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE:
 	 case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK:
 	 case RETRO_ENVIRONMENT_SET_GEOMETRY:
 		return true;
+	 case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
+	 case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+		return false;
 	 default:
 		fprintf(stderr, "Unexpected env setting 0x%x\n", cmd);
 		return false;
@@ -122,6 +136,26 @@ int main(int argc, char *argv[])
 
 	printf("Setting retro_set_input_state:\t\t");
 	lr_set_input_state(input_state_cb);
+	puts("OK");
+
+	printf("Memory API before init:			");
+	if (lr_get_memory_data(RETRO_MEMORY_SYSTEM_RAM) != NULL ||
+	    lr_get_memory_size(RETRO_MEMORY_SYSTEM_RAM) != 0)
+	{
+		puts("ERROR");
+		return EXIT_FAILURE;
+	}
+	puts("OK");
+
+	printf("Rejecting data-only content:		");
+	{
+		struct retro_game_info data_only = { NULL, "data", 4, NULL };
+		if (lr_load_game(&data_only))
+		{
+			puts("ERROR");
+			return EXIT_FAILURE;
+		}
+	}
 	puts("OK");
 
 #if 0	/* This only works if we can be sure that Hatari can load a tos.img */

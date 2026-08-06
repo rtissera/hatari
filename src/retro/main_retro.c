@@ -14,14 +14,21 @@
 #include "floppy.h"
 #include "memorySnapShot.h"
 #include "m68000.h"
+#include "retro_options.h"
 #include "reset.h"
+#include "retro_disk.h"
+#include "retro_harddisk.h"
+#include "vfs.h"
 #include "screen.h"
+#include "stMemory.h"
 #include "sound.h"
 #include "tos.h"
 #include "vdi.h"
 #include "version.h"
 
 static bool has_cpu_config_changed = true;
+static unsigned last_video_width;
+static unsigned last_video_height;
 static char pending_state_path[PATH_MAX];
 static char system_directory[PATH_MAX];
 static char tos_path[PATH_MAX];
@@ -92,12 +99,39 @@ retro_environment_t environment_cb;
 retro_video_refresh_t video_refresh_cb;
 retro_input_poll_t input_poll_cb;
 retro_input_state_t input_state_cb;
+unsigned retro_controller_devices[2] = {
+	RETRO_DEVICE_JOYPAD, RETRO_DEVICE_JOYPAD
+};
 
 
 RETRO_API void retro_set_environment(retro_environment_t cb)
 {
 	static enum retro_pixel_format pixelformat = RETRO_PIXEL_FORMAT_XRGB8888;
 	static bool no_game = true;
+	static struct retro_controller_description controller_types[] = {
+		{ "RetroPad", RETRO_DEVICE_JOYPAD }
+	};
+	static struct retro_controller_info controller_info[] = {
+		{ controller_types, 1 },
+		{ controller_types, 1 }
+	};
+	static struct retro_input_descriptor input_descriptors[] = {
+		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT, "Joystick 0 Left" },
+		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT, "Joystick 0 Right" },
+		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP, "Joystick 0 Up" },
+		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN, "Joystick 0 Down" },
+		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B, "Joystick 0 Fire 1" },
+		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y, "Joystick 0 Fire 2" },
+		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A, "Joystick 0 Fire 3" },
+		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT, "Joystick 1 Left" },
+		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT, "Joystick 1 Right" },
+		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP, "Joystick 1 Up" },
+		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN, "Joystick 1 Down" },
+		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B, "Joystick 1 Fire 1" },
+		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y, "Joystick 1 Fire 2" },
+		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A, "Joystick 1 Fire 3" },
+		{ 0 }
+	};
 
 	environment_cb = cb;
 
@@ -106,6 +140,11 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 
 	/* Hatari can start without game disks */
 	cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
+	cb(RETRO_ENVIRONMENT_SET_CONTROLLER_INFO, (void *)controller_info);
+	cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, (void *)input_descriptors);
+	RetroOptions_SetEnvironment(cb);
+	RetroDisk_SetEnvironment(cb);
+	RetroVfs_SetEnvironment(cb);
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t cb)
@@ -135,6 +174,8 @@ RETRO_API void retro_init(void)
 	char *argv[1] = { name };
 	int argc = 1;
 	const char *directory = NULL;
+	last_video_width = 0;
+	last_video_height = 0;
 
 	if (environment_cb && environment_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY,
 	                                     &directory) && directory && *directory)
@@ -152,10 +193,14 @@ RETRO_API void retro_init(void)
 		argv_with_tos[1] = tos_option;
 		argv_with_tos[2] = tos_path;
 		argc = 3;
+		Main_SetPreInitHook(RetroOptions_Apply);
 		Main_Init(argc, argv_with_tos);
 	}
 	else
+	{
+		Main_SetPreInitHook(RetroOptions_Apply);
 		Main_Init(argc, argv);
+	}
 	has_cpu_config_changed = true;
 }
 
@@ -164,6 +209,7 @@ RETRO_API void retro_deinit(void)
 	if (pending_state_path[0])
 		unlink(pending_state_path);
 	pending_state_path[0] = '\0';
+	Main_SetPreInitHook(NULL);
 	Main_UnInit();
 }
 
@@ -173,7 +219,7 @@ RETRO_API void retro_get_system_info(struct retro_system_info *info)
 	info->library_name = "hatari";
 	info->library_version = HATARI_VERSION;
 	info->need_fullpath = true;
-	info->valid_extensions = "st|msa|dim|stx|scp|kfs|ipf|zip|gz|m3u|m3u8";
+	info->valid_extensions = "st|msa|dim|stx|scp|kfs|ipf|zip|gz|m3u|m3u8|hd|hdf|hdi|vhd|sthd";
 }
 
 RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
@@ -206,6 +252,11 @@ RETRO_API void retro_run(void)
 
 	if (input_poll_cb)
 		input_poll_cb();
+	if (RetroOptions_Update())
+	{
+		Configuration_Apply(true);
+		has_cpu_config_changed = true;
+	}
 	M68000_UnsetSpecial(SPCFLAG_BRK);
 
 	if (has_cpu_config_changed)
@@ -222,7 +273,22 @@ RETRO_API void retro_run(void)
 
 	Screen_GetDimension(&pixels, &width, &height, &pitch);
 	if (video_refresh_cb && pixels && width > 0 && height > 0)
+	{
+		if (environment_cb &&
+		    ((unsigned)width != last_video_width ||
+		     (unsigned)height != last_video_height))
+		{
+			struct retro_game_geometry geometry = {
+				(unsigned)width, (unsigned)height,
+				MAX_VDI_WIDTH, MAX_VDI_HEIGHT,
+				(float)width / (float)height
+			};
+			environment_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry);
+			last_video_width = (unsigned)width;
+			last_video_height = (unsigned)height;
+		}
 		video_refresh_cb(pixels, (unsigned)width, (unsigned)height, (size_t)pitch);
+	}
 
 	/* Restore requests are completed by the CPU loop.  The file is no longer
 	 * needed once that loop has returned. */
@@ -235,6 +301,8 @@ RETRO_API void retro_run(void)
 
 RETRO_API void retro_set_controller_port_device(unsigned port, unsigned device)
 {
+	if (port < 2)
+		retro_controller_devices[port] = device;
 }
 
 RETRO_API size_t retro_serialize_size(void)
@@ -298,15 +366,22 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char *code)
 
 RETRO_API bool retro_load_game(const struct retro_game_info *game)
 {
-	if (!game || !game->path)
-	{
-		Floppy_SetDiskFileNameNone(0);
-		return true;
-	}
-	if (!Floppy_SetDiskFileName(0, game->path, NULL))
+	/* The native floppy and hard-disk backends open filenames themselves.
+	 * Keep the full-path contract explicit until those backends share a VFS
+	 * capable file abstraction. */
+	if (game && !game->path)
 		return false;
-	Floppy_InsertDiskIntoDrive(0);
-	return true;
+	if (RetroHardDisk_LoadGame(game))
+		return true;
+	if (game && game->path &&
+	    (strrchr(game->path, '.') &&
+	     (!strcasecmp(strrchr(game->path, '.') + 1, "hd") ||
+	      !strcasecmp(strrchr(game->path, '.') + 1, "hdf") ||
+	      !strcasecmp(strrchr(game->path, '.') + 1, "hdi") ||
+	      !strcasecmp(strrchr(game->path, '.') + 1, "vhd") ||
+	      !strcasecmp(strrchr(game->path, '.') + 1, "sthd"))))
+		return false;
+	return RetroDisk_LoadGame(game);
 }
 
 RETRO_API bool retro_load_game_special(unsigned game_type, const struct retro_game_info *info, size_t num_info)
@@ -318,6 +393,8 @@ RETRO_API void retro_unload_game(void)
 {
 	for (int drive = 0; drive < MAX_FLOPPYDRIVES; drive++)
 		Floppy_EjectDiskFromDrive(drive);
+	RetroDisk_UnloadGame();
+	RetroHardDisk_UnloadGame();
 }
 
 RETRO_API unsigned retro_get_region(void)
@@ -327,13 +404,15 @@ RETRO_API unsigned retro_get_region(void)
 
 RETRO_API void* retro_get_memory_data(unsigned id)
 {
-	// This interface seems to be for automatically creating save files,
-	// but this core should save to specially named floppy files image instead.
+	if (id == RETRO_MEMORY_SYSTEM_RAM && STRam && STRamEnd)
+		return STRam;
 	return NULL;
 }
 
 RETRO_API size_t retro_get_memory_size(unsigned id)
 {
+	if (id == RETRO_MEMORY_SYSTEM_RAM && STRam)
+		return STRamEnd;
 	return 0;
 }
 
