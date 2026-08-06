@@ -9,6 +9,7 @@
 
 #include "main.h"
 #include "main_retro.h"
+#include "configuration.h"
 #include "hatari-glue.h"
 #include "dialog.h"
 #include "floppy.h"
@@ -301,6 +302,20 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
 	memset(info, 0, sizeof(*info));
 
 	Screen_GetDimension(&pixels, &width, &height, &pitch);
+	if (width <= 0 || height <= 0)
+	{
+		/* screen_width/height are only ever set by Screen_SetVideoSize(),
+		   which only runs once the emulated CPU programs a video mode -
+		   i.e. after TOS has booted, inside retro_run(). Every libretro
+		   frontend calls retro_get_system_av_info() once right after
+		   retro_init(), before any retro_run(), so this 0x0 case is the
+		   normal first call, not a fallback for something exceptional.
+		   Report Screen_Init()'s own nMaxWidth/nMaxHeight instead of an
+		   invalid 0x0/NaN geometry; it runs during Main_InitSubsystems(),
+		   before the TOS check, so it's already populated here. */
+		width = ConfigureParams.Screen.nMaxWidth;
+		height = ConfigureParams.Screen.nMaxHeight;
+	}
 	info->geometry.base_width = width;
 	info->geometry.base_height = height;
 	info->geometry.max_width = MAX_VDI_WIDTH;

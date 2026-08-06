@@ -22,6 +22,7 @@ static void (*lr_run)(void);
 static bool (*lr_load_game)(const struct retro_game_info *game);
 static void *(*lr_get_memory_data)(unsigned id);
 static size_t (*lr_get_memory_size)(unsigned id);
+static void (*lr_get_system_av_info)(struct retro_system_av_info *info);
 
 static bool screen_refreshed;
 static const struct retro_subsystem_info *captured_subsystems;
@@ -56,6 +57,7 @@ static void init_funcs(void *dlh)
 	lr_load_game = test_dlsym(dlh, "retro_load_game");
 	lr_get_memory_data = test_dlsym(dlh, "retro_get_memory_data");
 	lr_get_memory_size = test_dlsym(dlh, "retro_get_memory_size");
+	lr_get_system_av_info = test_dlsym(dlh, "retro_get_system_av_info");
 }
 
 
@@ -81,7 +83,12 @@ static bool env_cb(unsigned cmd, void *data)
 	 case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
 	 case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
 	 case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+	 case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
 		return false;
+	 case RETRO_ENVIRONMENT_GET_VARIABLE:
+		/* No overrides: let every core option fall back to its default. */
+		((struct retro_variable *)data)->value = NULL;
+		return true;
 	 default:
 		fprintf(stderr, "Unexpected env setting 0x%x\n", cmd);
 		return false;
@@ -174,25 +181,49 @@ int main(int argc, char *argv[])
 	}
 	puts("OK");
 
-#if 0	/* This only works if we can be sure that Hatari can load a tos.img */
-	printf("Initializing core...\n");
+	/*
+	 * retro_init() itself is safe to call without a TOS image: the
+	 * libretro frontend's own Main_ErrorExit() (main_retro.c) just logs
+	 * and sets a flag instead of exit()ing like the SDL frontend's does,
+	 * and Dialog_MainDlg() is stubbed to a no-op here, so the
+	 * "bring up a GUI to pick another TOS" path Main_InitSubsystems()
+	 * takes on load failure never actually opens anything. Confirmed by
+	 * running it repeatedly under gdb with no crash.
+	 *
+	 * retro_run() is a different story: it eventually crashes (SIGSEGV
+	 * inside m68k_run_1_ce(), PC == 0) because the reset vector was never
+	 * loaded from a real TOS ROM - confirmed via gdb backtrace. The first
+	 * call can survive by luck (whether the CPU reaches address 0 within
+	 * that frame's cycle budget), but the second reliably doesn't. So
+	 * retro_run() still isn't called here; only the parts of the
+	 * lifecycle that don't need the CPU to actually execute are.
+	 */
+	printf("Initializing core (no TOS image):\t");
 	lr_init();
+	puts("OK");
 
-	printf("Testing retro_run:\t\t\t");
-	screen_refreshed = false;
-	lr_run();
-	lr_run();
-	if (!screen_refreshed)
+	printf("retro_get_system_av_info before retro_run:\t");
 	{
-		puts("ERROR: Screen has not been refreshed");
-		return EXIT_FAILURE;
+		struct retro_system_av_info av_info;
+		lr_get_system_av_info(&av_info);
+		/* Every frontend calls this once right after retro_init(), before
+		   any retro_run() - i.e. before TOS has had a chance to program a
+		   video mode. Screen dimensions must already have a sane fallback
+		   at that point, not the 0x0 (and resulting NaN aspect ratio) that
+		   Screen_GetDimension() reports before the first mode change. */
+		if (av_info.geometry.base_width == 0 ||
+		    av_info.geometry.base_height == 0 ||
+		    !(av_info.geometry.aspect_ratio > 0.0f))
+		{
+			puts("ERROR");
+			return EXIT_FAILURE;
+		}
 	}
 	puts("OK");
 
-	printf("Testing retro_deinit:\t\t\t");
+	printf("Testing retro_deinit (retro_run was never called):\t");
 	lr_deinit();
 	puts("OK");
-#endif
 
 	dlclose(dlh);
 
