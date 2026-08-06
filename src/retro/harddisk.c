@@ -85,7 +85,10 @@ bool RetroHardDisk_LoadGame(const struct retro_game_info *game)
 
 	if (!mount_image())
 	{
-		char temporary[] = "/tmp/hatari-libretro-hd-XXXXXX";
+		char temporary[PATH_MAX];
+		if (!RetroVfs_MakeTemplate("hatari-libretro-hd-XXXXXX", temporary,
+		                           sizeof(temporary)))
+			return false;
 		if (!RetroVfs_Materialize(game->path, temporary,
 		                          RETRO_HARDDISK_MATERIALIZE_LIMIT,
 		                          materialized_path,

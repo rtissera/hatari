@@ -15,13 +15,33 @@
 #include "vfs.h"
 
 static struct retro_vfs_interface *vfs;
+static char temporary_directory[PATH_MAX];
 
 void RetroVfs_SetEnvironment(retro_environment_t cb)
 {
 	struct retro_vfs_interface_info info = { 1, NULL };
+	const char *directory = NULL;
 	vfs = NULL;
+	temporary_directory[0] = '\0';
 	if (cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &info))
 		vfs = info.iface;
+	if (cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &directory) && directory &&
+	    *directory && snprintf(temporary_directory, sizeof(temporary_directory),
+                            "%s", directory) < (int)sizeof(temporary_directory))
+		return;
+	snprintf(temporary_directory, sizeof(temporary_directory), "%s", "/tmp");
+}
+
+bool RetroVfs_MakeTemplate(const char *name, char *path, size_t path_size)
+{
+	size_t length;
+
+	if (!name || !path || !path_size || !temporary_directory[0])
+		return false;
+	length = strlen(temporary_directory);
+	return snprintf(path, path_size, "%s%s%s", temporary_directory,
+	                length && temporary_directory[length - 1] == '/' ? "" : "/",
+	                name) < (int)path_size;
 }
 
 bool RetroVfs_Materialize(const char *source, char *template_path,

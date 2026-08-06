@@ -76,6 +76,7 @@ static bool env_cb(unsigned cmd, void *data)
 		return true;
 	 case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
 	 case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+	 case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
 		return false;
 	 default:
 		fprintf(stderr, "Unexpected env setting 0x%x\n", cmd);

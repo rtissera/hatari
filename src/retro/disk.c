@@ -53,9 +53,12 @@ static void release_materialized(unsigned index, bool writeback)
 
 static bool materialize_image(unsigned index)
 {
-	char temporary[] = "/tmp/hatari-libretro-disk-XXXXXX";
+	char temporary[PATH_MAX];
 
 	if (index >= image_count || materialized_paths[index][0])
+		return false;
+	if (!RetroVfs_MakeTemplate("hatari-libretro-disk-XXXXXX", temporary,
+	                          sizeof(temporary)))
 		return false;
 	return RetroVfs_Materialize(image_paths[index], temporary, 0,
 	                            materialized_paths[index],
@@ -98,10 +101,13 @@ static bool load_playlist(const char *playlist)
 	FILE *file;
 	char line[FILENAME_MAX];
 	char directory[FILENAME_MAX];
-	char temporary[] = "/tmp/hatari-libretro-playlist-XXXXXX";
+	char temporary[PATH_MAX];
 	char materialized[FILENAME_MAX];
 	unsigned old_count = image_count;
 
+	if (!RetroVfs_MakeTemplate("hatari-libretro-playlist-XXXXXX", temporary,
+	                           sizeof(temporary)))
+		return false;
 	if (RetroVfs_Materialize(playlist, temporary, 0, materialized,
                          sizeof(materialized)))
 	{

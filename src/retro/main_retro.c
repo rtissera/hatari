@@ -31,6 +31,7 @@ static unsigned last_video_width;
 static unsigned last_video_height;
 static char pending_state_path[PATH_MAX];
 static char system_directory[PATH_MAX];
+static char save_directory[PATH_MAX];
 static char tos_path[PATH_MAX];
 
 static void retro_set_memory_maps(void)
@@ -68,15 +69,26 @@ static void retro_set_memory_maps(void)
  * as the single source of truth and bridge it to libretro's memory API here. */
 static bool snapshot_path(char *path, size_t path_size)
 {
+	const char *directory = save_directory[0] ? save_directory : "/tmp";
+	size_t length;
 	int fd;
 
-	if (path_size < sizeof("/tmp/hatari-libretro-state-XXXXXX"))
+	length = strlen(directory);
+	if (length + sizeof("/hatari-libretro-state-XXXXXX") > path_size)
 		return false;
-
-	if (snprintf(path, path_size, "/tmp/hatari-libretro-state-XXXXXX") >= (int)path_size)
+	if (snprintf(path, path_size, "%s%s%s", directory,
+	             length && directory[length - 1] == '/' ? "" : "/",
+	             "hatari-libretro-state-XXXXXX") >= (int)path_size)
 		return false;
 
 	fd = mkstemp(path);
+	if (fd < 0 && save_directory[0])
+	{
+		if (snprintf(path, path_size, "/tmp/hatari-libretro-state-XXXXXX") >=
+		    (int)path_size)
+			return false;
+		fd = mkstemp(path);
+	}
 	if (fd < 0)
 		return false;
 	close(fd);
@@ -155,6 +167,8 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B, "Joystick 0 Fire 1" },
 		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y, "Joystick 0 Fire 2" },
 		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A, "Joystick 0 Fire 3" },
+		{ 0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X, "Joystick 0 Analog X" },
+		{ 0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y, "Joystick 0 Analog Y" },
 		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT, "Joystick 1 Left" },
 		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT, "Joystick 1 Right" },
 		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP, "Joystick 1 Up" },
@@ -162,6 +176,8 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B, "Joystick 1 Fire 1" },
 		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y, "Joystick 1 Fire 2" },
 		{ 1, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A, "Joystick 1 Fire 3" },
+		{ 1, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X, "Joystick 1 Analog X" },
+		{ 1, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y, "Joystick 1 Analog Y" },
 		{ 0 }
 	};
 
@@ -207,8 +223,10 @@ RETRO_API void retro_init(void)
 	char *argv[1] = { name };
 	int argc = 1;
 	const char *directory = NULL;
+	const char *save_path = NULL;
 	last_video_width = 0;
 	last_video_height = 0;
+	save_directory[0] = '\0';
 
 	if (environment_cb && environment_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY,
 	                                     &directory) && directory && *directory)
@@ -219,6 +237,9 @@ RETRO_API void retro_init(void)
 		             "tos.img") >= (int)sizeof(tos_path))
 			tos_path[0] = '\0';
 	}
+	if (environment_cb && environment_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY,
+	                                     &save_path) && save_path && *save_path)
+		snprintf(save_directory, sizeof(save_directory), "%s", save_path);
 	if (tos_path[0])
 	{
 		static char *argv_with_tos[3];
@@ -405,6 +426,8 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 	 * capable file abstraction. */
 	if (game && !game->path)
 		return false;
+	RetroDisk_UnloadGame();
+	RetroHardDisk_UnloadGame();
 	if (RetroHardDisk_LoadGame(game))
 		return true;
 	if (game && game->path &&
