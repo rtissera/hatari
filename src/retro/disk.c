@@ -35,6 +35,24 @@ static bool has_extension(const char *path, const char *extension)
 	return dot && !strcasecmp(dot + 1, extension);
 }
 
+/* Full compound extension of the basename (e.g. ".st", ".st.gz"), or "" if
+   none. Hatari's floppy format detectors (ST_FileNameIsST() etc.) key off
+   the file extension, not content, so a materialized temp file that drops
+   it would never be recognized as any known image format. */
+static const char *extension_suffix(const char *path)
+{
+	const char *slash = strrchr(path, '/');
+	const char *backslash = strrchr(path, '\\');
+	const char *base;
+	const char *dot;
+
+	if (!slash || (backslash && backslash > slash))
+		slash = backslash;
+	base = slash ? slash + 1 : path;
+	dot = strchr(base, '.');
+	return dot ? dot : "";
+}
+
 static bool add_path(const char *path)
 {
 	if (!path || !*path || image_count >= RETRO_DISK_MAX)
@@ -54,13 +72,16 @@ static void release_materialized(unsigned index, bool writeback)
 static bool materialize_image(unsigned index)
 {
 	char temporary[PATH_MAX];
+	const char *suffix;
 
 	if (index >= image_count || materialized_paths[index][0])
 		return false;
-	if (!RetroVfs_MakeTemplate("hatari-libretro-disk-XXXXXX", temporary,
+	suffix = extension_suffix(image_paths[index]);
+	if (!RetroVfs_MakeTemplate("hatari-libretro-disk-XXXXXX", suffix, temporary,
 	                          sizeof(temporary)))
 		return false;
-	return RetroVfs_Materialize(image_paths[index], temporary, 0,
+	return RetroVfs_Materialize(image_paths[index], temporary,
+	                            sizeof(temporary), 0, (int)strlen(suffix),
 	                            materialized_paths[index],
 	                            sizeof(materialized_paths[index]));
 }
@@ -105,11 +126,11 @@ static bool load_playlist(const char *playlist)
 	char materialized[FILENAME_MAX];
 	unsigned old_count = image_count;
 
-	if (!RetroVfs_MakeTemplate("hatari-libretro-playlist-XXXXXX", temporary,
+	if (!RetroVfs_MakeTemplate("hatari-libretro-playlist-XXXXXX", "", temporary,
 	                           sizeof(temporary)))
 		return false;
-	if (RetroVfs_Materialize(playlist, temporary, 0, materialized,
-                         sizeof(materialized)))
+	if (RetroVfs_Materialize(playlist, temporary, sizeof(temporary), 0, 0,
+                         materialized, sizeof(materialized)))
 	{
 		file = fopen(temporary, "rb");
 		if (file)
@@ -209,7 +230,13 @@ static bool insert_drive(unsigned drive)
 			return false;
 		}
 	}
-	return Floppy_InsertDiskIntoDrive((int)drive);
+	if (Floppy_InsertDiskIntoDrive((int)drive))
+		return true;
+	/* Don't leave szDiskFileName[drive] pointing at an image that failed
+	   to actually mount: it would block that same image from being
+	   inserted into the other drive afterwards. */
+	Floppy_SetDiskFileNameNone((int)drive);
+	return false;
 }
 
 static void eject_drive(unsigned drive)
@@ -217,6 +244,12 @@ static void eject_drive(unsigned drive)
 	if (ejected[drive])
 		return;
 	Floppy_EjectDiskFromDrive((int)drive);
+	/* Floppy_EjectDiskFromDrive() only clears Hatari's internal
+	   EmulationDrives[] record, not ConfigureParams.DiskImage.szDiskFileName[].
+	   Leaving the latter set makes Floppy_SetDiskFileName() refuse to insert
+	   the same image into the other drive ("Cannot insert same floppy to
+	   multiple drives!"), which breaks the mutual-exclusion eviction below. */
+	Floppy_SetDiskFileNameNone((int)drive);
 	release_materialized(image_index[drive], true);
 	ejected[drive] = true;
 }
