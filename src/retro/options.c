@@ -15,6 +15,7 @@
 #include <libretro.h>
 
 #include "configuration.h"
+#include "retro_disk.h"
 #include "retro_options.h"
 
 static retro_environment_t environment_cb;
@@ -27,6 +28,8 @@ static struct retro_variable variables[] = {
 	{ "hatari_sound_rate", "Sound rate; 22050|44100|48000" },
 	{ "hatari_fast_floppy", "Fast floppy; disabled|enabled" },
 	{ "hatari_drive_b", "Drive B; disabled|enabled" },
+	{ "hatari_disk_active_drive",
+	  "Disk Control target drive; a|b" },
 	{ "hatari_write_protect", "Floppy write protection; off|on|auto" },
 	{ NULL, NULL }
 };
@@ -118,6 +121,11 @@ void RetroOptions_Apply(void)
 
 	value = retro_option("hatari_drive_b");
 	ConfigureParams.DiskImage.EnableDriveB = !value || strcasecmp(value, "disabled");
+	RetroDisk_SetDriveBEnabled(ConfigureParams.DiskImage.EnableDriveB);
+
+	value = retro_option("hatari_disk_active_drive");
+	RetroDisk_SetActiveDrive(ConfigureParams.DiskImage.EnableDriveB &&
+			value && !strcasecmp(value, "b") ? 1 : 0);
 
 	value = retro_option("hatari_write_protect");
 	if (value && !strcasecmp(value, "on"))

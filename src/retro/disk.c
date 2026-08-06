@@ -24,8 +24,8 @@ static char image_paths[RETRO_DISK_MAX][FILENAME_MAX];
 static char materialized_paths[RETRO_DISK_MAX][FILENAME_MAX];
 static unsigned image_count;
 static unsigned image_index[2];
+static bool ejected[2] = { true, true };
 static unsigned selected_drive;
-static bool ejected = true;
 static unsigned initial_image = RETRO_DISK_MAX;
 static char initial_image_path[FILENAME_MAX];
 
@@ -171,51 +171,94 @@ static bool load_playlist(const char *playlist)
 	return image_count > old_count;
 }
 
-static bool insert_selected(void)
+static retro_environment_t disk_environment_cb;
+
+static void notify(const char *message)
+{
+	struct retro_message_ext notification;
+
+	if (!disk_environment_cb)
+		return;
+	memset(&notification, 0, sizeof(notification));
+	notification.msg = message;
+	notification.duration = 3000;
+	notification.priority = 1;
+	notification.level = RETRO_LOG_INFO;
+	notification.target = RETRO_MESSAGE_TARGET_OSD;
+	notification.type = RETRO_MESSAGE_TYPE_NOTIFICATION;
+	notification.progress = -1;
+	disk_environment_cb(RETRO_ENVIRONMENT_SET_MESSAGE_EXT, &notification);
+}
+
+static bool insert_drive(unsigned drive)
 {
 	const char *path;
-	unsigned index = image_index[selected_drive];
+	unsigned index = image_index[drive];
 
 	if (index >= image_count)
 		return true;
 	path = image_paths[index];
-	if (!Floppy_SetDiskFileName((int)selected_drive, path, NULL))
+	if (!Floppy_SetDiskFileName((int)drive, path, NULL))
 	{
 		if (!materialize_image(index))
 			return false;
 		path = materialized_paths[index];
-		if (!Floppy_SetDiskFileName((int)selected_drive, path, NULL))
+		if (!Floppy_SetDiskFileName((int)drive, path, NULL))
 		{
 			release_materialized(index, false);
 			return false;
 		}
 	}
-	return Floppy_InsertDiskIntoDrive((int)selected_drive);
+	return Floppy_InsertDiskIntoDrive((int)drive);
+}
+
+static void eject_drive(unsigned drive)
+{
+	if (ejected[drive])
+		return;
+	Floppy_EjectDiskFromDrive((int)drive);
+	release_materialized(image_index[drive], true);
+	ejected[drive] = true;
+}
+
+static bool set_drive_eject_state(bool value, unsigned drive)
+{
+	unsigned other = drive ^ 1;
+
+	if (value)
+	{
+		eject_drive(drive);
+		return true;
+	}
+	if (!ejected[drive])
+		return true;
+	/* The same physical image cannot be mounted in both drives at once. */
+	bool evicted_other = !ejected[other] && image_index[other] < image_count &&
+	                      image_index[other] == image_index[drive];
+	if (evicted_other)
+		eject_drive(other);
+	if (!insert_drive(drive))
+	{
+		/* Best-effort: don't leave the evicted drive empty on failure. */
+		if (evicted_other && insert_drive(other))
+			ejected[other] = false;
+		return false;
+	}
+	ejected[drive] = false;
+	if (evicted_other)
+		notify(other == 0 ? "Hatari: drive A ejected (disk moved to B)" :
+		                     "Hatari: drive B ejected (disk moved to A)");
+	return true;
 }
 
 static bool RETRO_CALLCONV disk_set_eject_state(bool value)
 {
-	if (value)
-	{
-		if (!ejected)
-		{
-			Floppy_EjectDiskFromDrive((int)selected_drive);
-			release_materialized(image_index[selected_drive], true);
-		}
-		ejected = true;
-		return true;
-	}
-	if (!ejected)
-		return true;
-	if (!insert_selected())
-		return false;
-	ejected = false;
-	return true;
+	return set_drive_eject_state(value, selected_drive);
 }
 
 static bool RETRO_CALLCONV disk_get_eject_state(void)
 {
-	return ejected;
+	return ejected[selected_drive];
 }
 
 static unsigned RETRO_CALLCONV disk_get_image_index(void)
@@ -225,7 +268,7 @@ static unsigned RETRO_CALLCONV disk_get_image_index(void)
 
 static bool RETRO_CALLCONV disk_set_image_index(unsigned index)
 {
-	if (!ejected)
+	if (!ejected[selected_drive])
 		return false;
 	image_index[selected_drive] = index;
 	return true;
@@ -255,7 +298,13 @@ static unsigned RETRO_CALLCONV disk_get_num_images(void)
 static bool RETRO_CALLCONV disk_replace_image_index(unsigned index,
 		const struct retro_game_info *game)
 {
-	if (!ejected || index >= image_count)
+	if (index >= image_count)
+		return false;
+	/* Refuse to disturb an image that either drive currently has
+	   inserted: shifting the backing array out from under it would
+	   make eject-time writeback target the wrong file. */
+	if ((!ejected[0] && image_index[0] == index) ||
+	    (!ejected[1] && image_index[1] == index))
 		return false;
 	if (!game)
 	{
@@ -265,6 +314,16 @@ static bool RETRO_CALLCONV disk_replace_image_index(unsigned index,
 		memmove(&materialized_paths[index], &materialized_paths[index + 1],
 		        (image_count - index - 1) * sizeof(materialized_paths[0]));
 		--image_count;
+		/* The old tail slot is now a stale duplicate of the entry that
+		   was shifted down into image_count - 1; clear it so a later
+		   disk_add_image_index() doesn't inherit a live materialized
+		   path under a blank source path. */
+		image_paths[image_count][0] = '\0';
+		materialized_paths[image_count][0] = '\0';
+		if (image_index[0] != RETRO_DISK_MAX && image_index[0] > index)
+			--image_index[0];
+		if (image_index[1] != RETRO_DISK_MAX && image_index[1] > index)
+			--image_index[1];
 		return true;
 	}
 	if (!game->path)
@@ -323,18 +382,28 @@ void RetroDisk_SetEnvironment(retro_environment_t cb)
 		disk_get_image_path, disk_get_image_label
 	};
 
+	disk_environment_cb = cb;
 	cb(RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE, (void *)&callbacks);
 	cb(RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE, (void *)&extended);
 }
 
+void RetroDisk_SetActiveDrive(unsigned drive)
+{
+	selected_drive = drive == 1 ? 1 : 0;
+}
+
+void RetroDisk_SetDriveBEnabled(bool enabled)
+{
+	if (!enabled)
+		eject_drive(1);
+}
+
 bool RetroDisk_LoadGame(const struct retro_game_info *game)
 {
-	if (!ejected)
-		disk_set_eject_state(true);
+	eject_drive(0);
+	eject_drive(1);
 	clear_images();
 	image_index[0] = image_index[1] = RETRO_DISK_MAX;
-	selected_drive = 0;
-	ejected = true;
 	Floppy_SetDiskFileNameNone(0);
 	Floppy_SetDiskFileNameNone(1);
 
@@ -357,7 +426,14 @@ bool RetroDisk_LoadGame(const struct retro_game_info *game)
 		image_index[0] = initial_image;
 	initial_image = RETRO_DISK_MAX;
 	initial_image_path[0] = '\0';
-	return disk_set_eject_state(false);
+	/* Drive B starts pointed at the same swap-list entry as drive A, but
+	   stays ejected until the user switches the active drive to B and
+	   inserts it explicitly; the two drives can never hold the same
+	   image at once (see set_drive_eject_state()'s mutual exclusion). Drive
+	   A always gets the boot disk on load, independent of whichever drive
+	   the "Disk Control target drive" option currently points at. */
+	image_index[1] = image_index[0];
+	return set_drive_eject_state(false, 0);
 }
 
 bool RetroDisk_LoadGameSpecial(const struct retro_game_info *info,
@@ -367,12 +443,10 @@ bool RetroDisk_LoadGameSpecial(const struct retro_game_info *info,
 
 	if (!info || !num_info)
 		return false;
-	if (!ejected)
-		disk_set_eject_state(true);
+	eject_drive(0);
+	eject_drive(1);
 	clear_images();
 	image_index[0] = image_index[1] = RETRO_DISK_MAX;
-	selected_drive = 0;
-	ejected = true;
 	Floppy_SetDiskFileNameNone(0);
 	Floppy_SetDiskFileNameNone(1);
 	for (index = 0; index < num_info; ++index)
@@ -390,16 +464,16 @@ bool RetroDisk_LoadGameSpecial(const struct retro_game_info *info,
 		image_index[0] = initial_image;
 	initial_image = RETRO_DISK_MAX;
 	initial_image_path[0] = '\0';
-	return disk_set_eject_state(false);
+	image_index[1] = image_index[0];
+	return set_drive_eject_state(false, 0);
 }
 
 void RetroDisk_UnloadGame(void)
 {
-	if (!ejected)
-		disk_set_eject_state(true);
+	eject_drive(0);
+	eject_drive(1);
 	clear_images();
 	image_index[0] = image_index[1] = RETRO_DISK_MAX;
-	selected_drive = 0;
 	initial_image = RETRO_DISK_MAX;
 	initial_image_path[0] = '\0';
 }
