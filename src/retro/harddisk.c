@@ -88,7 +88,12 @@ bool RetroHardDisk_LoadGame(const struct retro_game_info *game)
 		char temporary[PATH_MAX];
 		if (!RetroVfs_MakeTemplate("hatari-libretro-hd-XXXXXX", "", temporary,
 		                           sizeof(temporary)))
+		{
+			ConfigureParams.Acsi[0] = previous_acsi;
+			ConfigureParams.HardDisk.bBootFromHardDisk = previous_boot_from_harddisk;
+			HDC_Init();
 			return false;
+		}
 		if (!RetroVfs_Materialize(game->path, temporary, sizeof(temporary),
 		                          RETRO_HARDDISK_MATERIALIZE_LIMIT, 0,
 		                          materialized_path,

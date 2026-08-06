@@ -349,6 +349,12 @@ int main(int argc, char *argv[])
 	lr_unload_game();
 
 	dlclose(dlh);
+	{
+		char rm_command[PATH_MAX + 64];
+		snprintf(rm_command, sizeof(rm_command), "rm -rf '%s'", scratch_dir);
+		if (system(rm_command) != 0)
+			fprintf(stderr, "Warning: failed to clean up '%s'\n", scratch_dir);
+	}
 	puts("All disk-control tests finished successfully.");
 	return 0;
 }
