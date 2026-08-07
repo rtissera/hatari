@@ -158,7 +158,8 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
 	};
 	static struct retro_controller_info controller_info[] = {
 		{ controller_types, 1 },
-		{ controller_types, 1 }
+		{ controller_types, 1 },
+		{ NULL, 0 }
 	};
 	static struct retro_input_descriptor input_descriptors[] = {
 		{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT, "Joystick 0 Left" },
