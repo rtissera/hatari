@@ -285,6 +285,37 @@ int main(int argc, char *argv[])
 	check(disk_ext->get_num_images() == 2, "M3U playlist: two swap-list entries");
 	check(!disk_ext->get_eject_state(), "M3U playlist: drive A auto-inserted");
 
+	/* --- Scenario B.1: initial-image restore, called (like real RetroArch
+	   does) *before* retro_load_game(), on a freshly-unloaded core (no
+	   content parsed yet, image_count == 0) - not after a load has
+	   already populated the swap list. This is the exact sequence real
+	   frontends use to restore a remembered disk index; a mock harness
+	   that never reproduces it wouldn't have caught retro_load_game()
+	   wiping the pending preference via its own internal
+	   RetroDisk_UnloadGame() call before RetroDisk_LoadGame() ever got to
+	   consult it. */
+	lr_unload_game();
+	check(disk_ext->set_initial_image(1, path_b),
+	      "Initial-image restore: set_initial_image(1, disk2) before reload");
+	{
+		struct retro_game_info game = { playlist_path, NULL, 0, NULL };
+		check(lr_load_game(&game),
+		      "Initial-image restore: retro_load_game succeeds");
+	}
+	check(disk_ext->get_image_index() == 1,
+	      "Initial-image restore: drive A restored to index 1");
+	check(!disk_ext->get_eject_state(),
+	      "Initial-image restore: drive A auto-inserted with the restored disk");
+
+	/* Reset to the plain-load baseline (drive A on index 0) that the
+	   remaining scenarios assume. */
+	lr_unload_game();
+	{
+		struct retro_game_info game = { playlist_path, NULL, 0, NULL };
+		check(lr_load_game(&game), "Baseline reload before Scenario C");
+	}
+	check(disk_ext->get_image_index() == 0, "Baseline reload: drive A on index 0");
+
 	/* --- Scenario C: active-drive option + A/B mutual exclusion --- */
 	mock_set_var("hatari_disk_active_drive", "b");
 	mock_set_var("hatari_drive_b", "enabled");

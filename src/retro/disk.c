@@ -310,7 +310,15 @@ static bool RETRO_CALLCONV disk_set_image_index(unsigned index)
 static bool RETRO_CALLCONV disk_set_initial_image(unsigned index,
 		const char *path)
 {
-	if (index >= RETRO_DISK_MAX || !path)
+	if (!path)
+		return false;
+
+	/* Confirmed against real RetroArch 1.18.0: this is called *before*
+	   retro_load_game() (image_count == 0 at this point), matching
+	   libretro.h's documented contract. Just stash the preference for
+	   RetroDisk_LoadGame()/LoadGameSpecial() to consult once the swap
+	   list is actually populated. */
+	if (index >= RETRO_DISK_MAX)
 		return false;
 	initial_image = index;
 	if (snprintf(initial_image_path, sizeof(initial_image_path), "%s", path) >=

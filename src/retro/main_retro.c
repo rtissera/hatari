@@ -458,7 +458,13 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 	 * capable file abstraction. */
 	if (game && !game->path)
 		return false;
-	RetroDisk_UnloadGame();
+	/* Don't call RetroDisk_UnloadGame() here: RetroDisk_LoadGame() already
+	   does equivalent cleanup itself (ejects both drives, clears the swap
+	   list), and unlike this function, it doesn't reset the pending
+	   initial-image preference a just-prior disk_set_initial_image() call
+	   may have stashed - real RetroArch calls that before retro_load_game()
+	   runs, and calling RetroDisk_UnloadGame() here was wiping it out
+	   before RetroDisk_LoadGame() ever got to consult it. */
 	RetroHardDisk_UnloadGame();
 	if (RetroHardDisk_LoadGame(game))
 		return true;
@@ -477,7 +483,9 @@ RETRO_API bool retro_load_game_special(unsigned game_type, const struct retro_ga
 {
 	if (game_type != 1 || !info || !num_info)
 		return false;
-	RetroDisk_UnloadGame();
+	/* See the comment in retro_load_game(): RetroDisk_LoadGameSpecial()
+	   already does the equivalent cleanup itself without touching the
+	   pending initial-image preference. */
 	RetroHardDisk_UnloadGame();
 	return RetroDisk_LoadGameSpecial(info, num_info);
 }
