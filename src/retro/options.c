@@ -33,6 +33,7 @@ static struct retro_variable variables[] = {
 	{ "hatari_write_protect", "Floppy write protection; off|on|auto" },
 	{ "hatari_falcon_dsp",
 	  "Falcon DSP (only applies to the Falcon machine type); emulated|none|dummy" },
+	{ "hatari_harddisk_bus", "Hard disk bus; acsi|ide|scsi" },
 	{ NULL, NULL }
 };
 

@@ -94,6 +94,8 @@ static struct retro_vfs_interface mock_vfs = {
 	.write = mock_vfs_write,
 };
 
+static const char *mock_harddisk_bus; /* NULL = frontend default (acsi) */
+
 static bool env_cb(unsigned cmd, void *data)
 {
 	switch (cmd)
@@ -110,6 +112,13 @@ static bool env_cb(unsigned cmd, void *data)
 	 case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
 		*(const char **)data = scratch_dir;
 		return true;
+	 case RETRO_ENVIRONMENT_GET_VARIABLE:
+	 {
+		struct retro_variable *variable = (struct retro_variable *)data;
+		variable->value = !strcmp(variable->key, "hatari_harddisk_bus") ?
+			mock_harddisk_bus : NULL;
+		return true;
+	 }
 	 default:
 		return false;
 	}
@@ -322,6 +331,36 @@ int main(int argc, char *argv[])
 		struct retro_game_info game = { path_a, NULL, 0, NULL };
 		check(lr_hd_load_game(&game),
 		      "After oversized rejection: a valid host file still mounts");
+	}
+	lr_hd_unload_game();
+
+	/* --- Scenario F: hatari_harddisk_bus selects IDE instead of the
+	   default ACSI - mounts via Ide_Init() instead of HDC_Init() --- */
+	mock_harddisk_bus = "ide";
+	{
+		struct retro_game_info game = { path_a, NULL, 0, NULL };
+		check(lr_hd_load_game(&game),
+		      "hatari_harddisk_bus=ide: RetroHardDisk_LoadGame mounts via IDE");
+	}
+	lr_hd_unload_game();
+
+	/* --- Scenario G: hatari_harddisk_bus selects SCSI --- */
+	mock_harddisk_bus = "scsi";
+	{
+		struct retro_game_info game = { path_a, NULL, 0, NULL };
+		check(lr_hd_load_game(&game),
+		      "hatari_harddisk_bus=scsi: RetroHardDisk_LoadGame mounts via SCSI");
+	}
+	lr_hd_unload_game();
+
+	/* --- Scenario H: switching the bus option between loads doesn't
+	   leave a stale device config behind - each load/unload cycle must
+	   be independent regardless of which bus was used previously --- */
+	mock_harddisk_bus = NULL; /* back to default ACSI */
+	{
+		struct retro_game_info game = { path_a, NULL, 0, NULL };
+		check(lr_hd_load_game(&game),
+		      "Switching back to default ACSI after IDE/SCSI: still mounts cleanly");
 	}
 	lr_hd_unload_game();
 
