@@ -31,6 +31,8 @@ static struct retro_variable variables[] = {
 	{ "hatari_disk_active_drive",
 	  "Disk Control target drive; a|b" },
 	{ "hatari_write_protect", "Floppy write protection; off|on|auto" },
+	{ "hatari_falcon_dsp",
+	  "Falcon DSP (only applies to the Falcon machine type); emulated|none|dummy" },
 	{ NULL, NULL }
 };
 
@@ -97,6 +99,29 @@ void RetroOptions_Apply(void)
 	value = retro_option("hatari_machine");
 	ConfigureParams.System.nMachineType = option_index(value, machines,
 			(int)(sizeof(machines) / sizeof(machines[0])), MACHINE_ST);
+
+	/* The DSP is Falcon-only hardware; force it off on every other machine
+	   type regardless of the option, matching real hardware and avoiding
+	   a stale "emulated" setting silently carrying over from a previous
+	   Falcon session into a non-Falcon one. */
+	if (ConfigureParams.System.nMachineType == MACHINE_FALCON)
+	{
+		static const char *const dsp_types[] = { "emulated", "none", "dummy" };
+		static const int dsp_values[] = {
+#if ENABLE_DSP_EMU
+			DSP_TYPE_EMU,
+#else
+			DSP_TYPE_NONE,
+#endif
+			DSP_TYPE_NONE, DSP_TYPE_DUMMY
+		};
+		value = retro_option("hatari_falcon_dsp");
+		ConfigureParams.System.nDSPType =
+			dsp_values[option_index(value, dsp_types,
+				(int)(sizeof(dsp_types) / sizeof(dsp_types[0])), 0)];
+	}
+	else
+		ConfigureParams.System.nDSPType = DSP_TYPE_NONE;
 
 	value = retro_option("hatari_memory");
 	ConfigureParams.Memory.STRamSize_KB = option_number(value, memory_sizes,
