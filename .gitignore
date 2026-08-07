@@ -44,3 +44,6 @@ Debug/*
 .cproject
 .project
 .settings/
+
+# RetroArch writes this when libretro_info_path points at share/libretro/info/
+share/libretro/info/core_info.cache
