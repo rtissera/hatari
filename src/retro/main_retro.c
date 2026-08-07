@@ -19,6 +19,7 @@
 #include "reset.h"
 #include "retro_disk.h"
 #include "retro_harddisk.h"
+#include "retro_statusbar.h"
 #include "vfs.h"
 #include "screen.h"
 #include "stMemory.h"
@@ -386,6 +387,7 @@ RETRO_API void retro_run(void)
 		has_cpu_config_changed = true;
 	}
 	cpu_dispatch();
+	RetroStatusbar_Tick();
 
 	Screen_GetDimension(&pixels, &width, &height, &pitch);
 	if (video_refresh_cb && pixels && width > 0 && height > 0)

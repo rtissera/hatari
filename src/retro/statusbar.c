@@ -9,8 +9,11 @@
 const char Statusbar_fileid[] = "Hatari statusbar.c";
 
 #include <assert.h>
+#include <libretro.h>
 #include "main.h"
+#include "main_retro.h"
 #include "configuration.h"
+#include "retro_statusbar.h"
 #include "screenSnapShot.h"
 #include "statusbar.h"
 #include "tos.h"
@@ -23,6 +26,33 @@ const char Statusbar_fileid[] = "Hatari statusbar.c";
 #include "blitter.h"
 #include "str.h"
 #include "lilo.h"
+
+/* drive_index_t (DRIVE_LED_A/B/HD) already matches the LED index scheme
+   used below one-for-one, so it's passed straight through as the
+   frontend-facing LED number - RetroArch shows these as "LED 0"/"LED
+   1"/"LED 2" with no built-in labels (custom skins can name them). */
+static struct retro_led_interface led_interface;
+static bool led_interface_queried;
+static bool led_interface_ok;
+
+/* SDL frontend (src/sdl/statusbar.c) shows the HD LED for 500ms after each
+   Statusbar_EnableHDLed() call; matched here via a frame countdown ticked
+   from retro_run(), since libretro has no wall-clock equivalent handy in
+   this adapter. Assumes a ~50Hz emulated frame rate (PAL ST); close enough
+   for a purely cosmetic activity blip. */
+#define HD_LED_EXPIRE_FRAMES 25
+static bool hd_led_active;
+static int hd_led_expire_frames;
+
+static void ensure_led_interface(void)
+{
+	if (led_interface_queried)
+		return;
+	led_interface_queried = true;
+	led_interface_ok = environment_cb &&
+		environment_cb(RETRO_ENVIRONMENT_GET_LED_INTERFACE, &led_interface) &&
+		led_interface.set_led_state;
+}
 
 
 /**
@@ -59,6 +89,12 @@ int Statusbar_GetHeight(void)
  */
 void Statusbar_EnableHDLed(drive_led_t state)
 {
+	ensure_led_interface();
+	if (!led_interface_ok)
+		return;
+	led_interface.set_led_state(DRIVE_LED_HD, state != LED_STATE_OFF);
+	hd_led_active = (state != LED_STATE_OFF);
+	hd_led_expire_frames = HD_LED_EXPIRE_FRAMES;
 }
 
 /**
@@ -68,6 +104,25 @@ void Statusbar_EnableHDLed(drive_led_t state)
 void Statusbar_SetFloppyLed(drive_index_t drive, drive_led_t state)
 {
 	assert(drive == DRIVE_LED_A || drive == DRIVE_LED_B);
+	ensure_led_interface();
+	if (!led_interface_ok)
+		return;
+	led_interface.set_led_state((int)drive, state != LED_STATE_OFF);
+}
+
+/**
+ * Expire the HD LED's transient "on" state; called once per retro_run().
+ */
+void RetroStatusbar_Tick(void)
+{
+	if (!hd_led_active)
+		return;
+	if (--hd_led_expire_frames <= 0)
+	{
+		hd_led_active = false;
+		if (led_interface_ok)
+			led_interface.set_led_state(DRIVE_LED_HD, 0);
+	}
 }
 
 
