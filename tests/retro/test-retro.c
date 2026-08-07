@@ -88,9 +88,20 @@ static bool env_cb(unsigned cmd, void *data)
 	 case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
 		return false;
 	 case RETRO_ENVIRONMENT_GET_VARIABLE:
-		/* No overrides: let every core option fall back to its default. */
-		((struct retro_variable *)data)->value = NULL;
+	 {
+		struct retro_variable *variable = (struct retro_variable *)data;
+		/* hatari_midi_capture=enabled here specifically exercises
+		   retro_init()'s pre-init hook (RetroOptions_Apply(), called
+		   before Main_InitSubsystems()/CycInt exist) taking the
+		   MIDI-enabled path with MIDI pre-configured on *before* the
+		   very first retro_init() ever runs - the exact scenario that
+		   crashed before RetroOptions_Update() (not Apply()) became the
+		   only place allowed to call Midi_UnInit()/Midi_Init(). Every
+		   other option falls back to its default (NULL). */
+		variable->value = !strcmp(variable->key, "hatari_midi_capture") ?
+			"enabled" : NULL;
 		return true;
+	 }
 	 default:
 		fprintf(stderr, "Unexpected env setting 0x%x\n", cmd);
 		return false;

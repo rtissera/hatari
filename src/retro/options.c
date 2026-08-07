@@ -15,6 +15,7 @@
 #include <libretro.h>
 
 #include "configuration.h"
+#include "midi.h"
 #include "retro_disk.h"
 #include "retro_options.h"
 
@@ -43,6 +44,8 @@ static struct retro_variable variables[] = {
 	{ "hatari_joystick_port4",
 	  "RetroPad 4 target; none|joystick0|joystick1|joypada|joypadb|parport1|parport2" },
 	{ "hatari_reset_type", "Reset type; warm|cold" },
+	{ "hatari_midi_capture",
+	  "MIDI output capture to file (raw bytes sent by ST software); disabled|enabled" },
 	{ NULL, NULL }
 };
 
@@ -225,17 +228,53 @@ void RetroOptions_Apply(void)
 	else
 		ConfigureParams.DiskImage.nWriteProtection = WRITEPROT_OFF;
 
+	value = retro_option("hatari_midi_capture");
+	ConfigureParams.Midi.bEnableMidi = value && !strcasecmp(value, "enabled");
+	if (ConfigureParams.Midi.bEnableMidi)
+	{
+		const char *directory = NULL;
+		size_t length;
+
+		if (!environment_cb ||
+		    !environment_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &directory) ||
+		    !directory || !*directory)
+			directory = "/tmp";
+		length = strlen(directory);
+		snprintf(ConfigureParams.Midi.sMidiOutFileName,
+		         sizeof(ConfigureParams.Midi.sMidiOutFileName), "%s%s%s",
+		         directory, length && directory[length - 1] == '/' ? "" : "/",
+		         "hatari-midi-out.raw");
+	}
+	else
+		ConfigureParams.Midi.sMidiOutFileName[0] = '\0';
+
 	update_joystick_port_mapping();
 }
 
 bool RetroOptions_Update(void)
 {
 	bool updated = false;
+	bool midi_was_enabled;
 
 	if (!environment_cb ||
 	    !environment_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) ||
 	    !updated)
 		return false;
+
+	/* Midi_Init()/Midi_UnInit() are only ever called from
+	   Main_InitSubsystems()/UnInitSubsystems() (src/main.c), never from
+	   Configuration_Apply() - so a runtime flip of hatari_midi_capture
+	   needs an explicit re-init here, or it would silently stay inert
+	   until the next full content reload. Safe to do here specifically
+	   (unlike inside RetroOptions_Apply(), which also runs as Main_Init()'s
+	   pre-init hook before CycInt exists): RetroOptions_Update() is only
+	   ever called from retro_run(), always after Main_Init() completed. */
+	midi_was_enabled = ConfigureParams.Midi.bEnableMidi;
 	RetroOptions_Apply();
+	if (ConfigureParams.Midi.bEnableMidi != midi_was_enabled)
+	{
+		Midi_UnInit();
+		Midi_Init();
+	}
 	return true;
 }
