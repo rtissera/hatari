@@ -1,5 +1,6 @@
 
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -352,7 +353,14 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
 
 RETRO_API void retro_reset(void)
 {
-	Reset_Warm();
+	struct retro_variable variable = { "hatari_reset_type", NULL };
+
+	if (environment_cb &&
+	    environment_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &variable) &&
+	    variable.value && !strcasecmp(variable.value, "cold"))
+		Reset_Cold();
+	else
+		Reset_Warm();
 }
 
 /* Dispatches one frame of 68k emulation, taking the "config just changed,

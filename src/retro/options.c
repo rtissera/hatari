@@ -42,6 +42,7 @@ static struct retro_variable variables[] = {
 	  "RetroPad 3 target; none|joystick0|joystick1|joypada|joypadb|parport1|parport2" },
 	{ "hatari_joystick_port4",
 	  "RetroPad 4 target; none|joystick0|joystick1|joypada|joypadb|parport1|parport2" },
+	{ "hatari_reset_type", "Reset type; warm|cold" },
 	{ NULL, NULL }
 };
 
