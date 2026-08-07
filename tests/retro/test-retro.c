@@ -23,6 +23,7 @@ static bool (*lr_load_game)(const struct retro_game_info *game);
 static void *(*lr_get_memory_data)(unsigned id);
 static size_t (*lr_get_memory_size)(unsigned id);
 static void (*lr_get_system_av_info)(struct retro_system_av_info *info);
+static size_t (*lr_serialize_size)(void);
 
 static bool screen_refreshed;
 static const struct retro_subsystem_info *captured_subsystems;
@@ -58,6 +59,7 @@ static void init_funcs(void *dlh)
 	lr_get_memory_data = test_dlsym(dlh, "retro_get_memory_data");
 	lr_get_memory_size = test_dlsym(dlh, "retro_get_memory_size");
 	lr_get_system_av_info = test_dlsym(dlh, "retro_get_system_av_info");
+	lr_serialize_size = test_dlsym(dlh, "retro_serialize_size");
 }
 
 
@@ -214,6 +216,20 @@ int main(int argc, char *argv[])
 		if (av_info.geometry.base_width == 0 ||
 		    av_info.geometry.base_height == 0 ||
 		    !(av_info.geometry.aspect_ratio > 0.0f))
+		{
+			puts("ERROR");
+			return EXIT_FAILURE;
+		}
+	}
+	puts("OK");
+
+	printf("retro_serialize_size without a TOS image (no crash):\t");
+	{
+		/* Without a loaded TOS, ensure_cpu_started() must not attempt a
+		   real CPU dispatch (that hits the same PC==0 reset-vector crash
+		   as retro_run() without TOS) just because a frontend probed
+		   serialize support before ever calling retro_run(). */
+		if (lr_serialize_size() != 0)
 		{
 			puts("ERROR");
 			return EXIT_FAILURE;

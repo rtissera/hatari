@@ -28,6 +28,7 @@
 #include "version.h"
 
 static bool has_cpu_config_changed = true;
+static bool cpu_has_run;
 static unsigned last_video_width;
 static unsigned last_video_height;
 static char pending_state_path[PATH_MAX];
@@ -275,6 +276,7 @@ RETRO_API void retro_init(void)
 	}
 	retro_set_memory_maps();
 	has_cpu_config_changed = true;
+	cpu_has_run = false;
 }
 
 RETRO_API void retro_deinit(void)
@@ -332,18 +334,12 @@ RETRO_API void retro_reset(void)
 	Reset_Warm();
 }
 
-RETRO_API void retro_run(void)
+/* Dispatches one frame of 68k emulation, taking the "config just changed,
+   do a full (re)init" path when needed. Shared by retro_run() and by the
+   serialize functions below, which need this to have happened at least
+   once before a snapshot is meaningful (see ensure_cpu_started()). */
+static void cpu_dispatch(void)
 {
-	int width, height, pitch;
-	uint32_t *pixels;
-
-	if (input_poll_cb)
-		input_poll_cb();
-	if (RetroOptions_Update())
-	{
-		Configuration_Apply(true);
-		has_cpu_config_changed = true;
-	}
 	M68000_UnsetSpecial(SPCFLAG_BRK);
 
 	if (has_cpu_config_changed)
@@ -357,6 +353,39 @@ RETRO_API void retro_run(void)
 		quit_program = 0;
 		m68k_run();
 	}
+	cpu_has_run = true;
+}
+
+/* Hatari's CPU/FPU core selects its emulation function tables lazily,
+   inside cpu_dispatch()'s first call - before that,
+   M68000_MemorySnapShot_Capture() crashes on a null FPU jump-table entry
+   (fpp_from_exten_fmovem). Some libretro frontends probe serialize
+   support immediately after retro_load_game(), before any retro_run(), so
+   run the same dispatch a real first retro_run() would instead of
+   crashing or permanently reporting "unsupported" for the session. */
+static void ensure_cpu_started(void)
+{
+	/* Without a successfully loaded TOS image, cpu_dispatch() would hit
+	   the same PC==0 reset-vector crash retro_run() does (see main_retro.c
+	   history) - there's nothing meaningful to snapshot in that state
+	   anyway, so just report "not yet serializable" instead. */
+	if (!cpu_has_run && bTosImageLoaded)
+		cpu_dispatch();
+}
+
+RETRO_API void retro_run(void)
+{
+	int width, height, pitch;
+	uint32_t *pixels;
+
+	if (input_poll_cb)
+		input_poll_cb();
+	if (RetroOptions_Update())
+	{
+		Configuration_Apply(true);
+		has_cpu_config_changed = true;
+	}
+	cpu_dispatch();
 
 	Screen_GetDimension(&pixels, &width, &height, &pitch);
 	if (video_refresh_cb && pixels && width > 0 && height > 0)
@@ -397,6 +426,9 @@ RETRO_API size_t retro_serialize_size(void)
 	void *state;
 	size_t size = 0;
 
+	ensure_cpu_started();
+	if (!cpu_has_run)
+		return 0;
 	if (snapshot_read(&state, &size))
 		free(state);
 	return size;
@@ -407,7 +439,9 @@ RETRO_API bool retro_serialize(void *data, size_t size)
 	void *state = NULL;
 	size_t state_size;
 
-	if (!data || !snapshot_read(&state, &state_size) || size < state_size)
+	ensure_cpu_started();
+	if (!cpu_has_run || !data || !snapshot_read(&state, &state_size) ||
+	    size < state_size)
 	{
 		free(state);
 		return false;
@@ -426,7 +460,8 @@ RETRO_API bool retro_unserialize(const void *data, size_t size)
 		unlink(pending_state_path);
 		pending_state_path[0] = '\0';
 	}
-	if (!data || !size || !snapshot_path(pending_state_path,
+	ensure_cpu_started();
+	if (!cpu_has_run || !data || !size || !snapshot_path(pending_state_path,
 	                                     sizeof(pending_state_path)))
 		return false;
 	file = fopen(pending_state_path, "wb");
