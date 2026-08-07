@@ -19,6 +19,7 @@
 #include "retro_options.h"
 #include "reset.h"
 #include "retro_disk.h"
+#include "retro_gemdos.h"
 #include "retro_harddisk.h"
 #include "retro_statusbar.h"
 #include "vfs.h"
@@ -531,6 +532,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 	   runs, and calling RetroDisk_UnloadGame() here was wiping it out
 	   before RetroDisk_LoadGame() ever got to consult it. */
 	RetroHardDisk_UnloadGame();
+	RetroGemDos_UnloadGame();
 	if (RetroHardDisk_LoadGame(game))
 		return true;
 	if (game && game->path &&
@@ -540,6 +542,11 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 	      !strcasecmp(strrchr(game->path, '.') + 1, "hdi") ||
 	      !strcasecmp(strrchr(game->path, '.') + 1, "vhd") ||
 	      !strcasecmp(strrchr(game->path, '.') + 1, "sthd"))))
+		return false;
+	if (RetroGemDos_LoadGame(game))
+		return true;
+	if (game && game->path && strrchr(game->path, '.') &&
+	    !strcasecmp(strrchr(game->path, '.') + 1, "gemdos"))
 		return false;
 	return RetroDisk_LoadGame(game);
 }
@@ -552,6 +559,7 @@ RETRO_API bool retro_load_game_special(unsigned game_type, const struct retro_ga
 	   already does the equivalent cleanup itself without touching the
 	   pending initial-image preference. */
 	RetroHardDisk_UnloadGame();
+	RetroGemDos_UnloadGame();
 	return RetroDisk_LoadGameSpecial(info, num_info);
 }
 
@@ -561,6 +569,7 @@ RETRO_API void retro_unload_game(void)
 		Floppy_EjectDiskFromDrive(drive);
 	RetroDisk_UnloadGame();
 	RetroHardDisk_UnloadGame();
+	RetroGemDos_UnloadGame();
 }
 
 RETRO_API unsigned retro_get_region(void)

@@ -1,7 +1,7 @@
 # Software Information
 display_name = "Atari - ST / STE / TT / Falcon (Hatari)"
 authors = "Nicolas Pomarède, Thomas Huth, Eero Tamminen et al."
-supported_extensions = "st|msa|dim|stx|scp|kfs|ipf|zip|gz|m3u|m3u8|hd|hdf|hdi|vhd|sthd"
+supported_extensions = "st|msa|dim|stx|scp|kfs|ipf|zip|gz|m3u|m3u8|hd|hdf|hdi|vhd|sthd|gemdos"
 corename = "hatari"
 license = "GPLv2"
 permissions = "microphone_optional"
@@ -25,4 +25,4 @@ load_subsystem = "true"
 hw_render = "false"
 needs_fullpath = "true"
 
-description = "Hatari emulator for libretro. This core supports Atari's 16-/32-bit ST/STE/TT/Falcon hardware, floppy disk playlists, and ACSI hard-disk images. It requires a TOS image to function."
+description = "Hatari emulator for libretro. This core supports Atari's 16-/32-bit ST/STE/TT/Falcon hardware, floppy disk playlists, ACSI/IDE/SCSI hard-disk images, and GEMDOS host-directory content via a .gemdos loader file. It requires a TOS image to function."
