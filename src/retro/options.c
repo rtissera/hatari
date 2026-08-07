@@ -16,8 +16,10 @@
 
 #include "configuration.h"
 #include "midi.h"
+#include "printer.h"
 #include "retro_disk.h"
 #include "retro_options.h"
+#include "rs232.h"
 
 static retro_environment_t environment_cb;
 
@@ -46,6 +48,10 @@ static struct retro_variable variables[] = {
 	{ "hatari_reset_type", "Reset type; warm|cold" },
 	{ "hatari_midi_capture",
 	  "MIDI output capture to file (raw bytes sent by ST software); disabled|enabled" },
+	{ "hatari_rs232_capture",
+	  "RS232 output capture to file (raw bytes sent by ST software); disabled|enabled" },
+	{ "hatari_printer_capture",
+	  "Printer output capture to file (raw bytes sent by ST software); disabled|enabled" },
 	{ NULL, NULL }
 };
 
@@ -93,6 +99,23 @@ static int option_number(const char *value, const int *values, int count,
 		if (number == values[i])
 			return (int)number;
 	return fallback;
+}
+
+/* Fills dest with "<save_directory>/<filename>" (falling back to /tmp if
+   the frontend save directory is unavailable), for the file-capture
+   options (MIDI/RS232/printer) below. */
+static void capture_path(char *dest, size_t dest_size, const char *filename)
+{
+	const char *directory = NULL;
+	size_t length;
+
+	if (!environment_cb ||
+	    !environment_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &directory) ||
+	    !directory || !*directory)
+		directory = "/tmp";
+	length = strlen(directory);
+	snprintf(dest, dest_size, "%s%s%s", directory,
+	         length && directory[length - 1] == '/' ? "" : "/", filename);
 }
 
 static int joyid_for_target(const char *value, int fallback)
@@ -228,25 +251,43 @@ void RetroOptions_Apply(void)
 	else
 		ConfigureParams.DiskImage.nWriteProtection = WRITEPROT_OFF;
 
+	/* Both Midi.sMidiInFileName and RS232.szInFileName default to a
+	   platform serial-device guess (/dev/snd/midiC1D0, /dev/modem -
+	   src/configuration.c) that won't exist on most systems. Since this
+	   is output-only capture, sMidiOutFileName/szOutFileName being
+	   non-empty isn't enough on its own - {Midi,RS232}_OpenX() opens
+	   *both* directions whenever their filename fields are non-empty,
+	   and fails (disabling the whole subsystem) if the stale In file
+	   can't be opened. Explicitly clear the In side so only the output
+	   file we actually set gets attempted. */
 	value = retro_option("hatari_midi_capture");
 	ConfigureParams.Midi.bEnableMidi = value && !strcasecmp(value, "enabled");
 	if (ConfigureParams.Midi.bEnableMidi)
-	{
-		const char *directory = NULL;
-		size_t length;
-
-		if (!environment_cb ||
-		    !environment_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &directory) ||
-		    !directory || !*directory)
-			directory = "/tmp";
-		length = strlen(directory);
-		snprintf(ConfigureParams.Midi.sMidiOutFileName,
-		         sizeof(ConfigureParams.Midi.sMidiOutFileName), "%s%s%s",
-		         directory, length && directory[length - 1] == '/' ? "" : "/",
-		         "hatari-midi-out.raw");
-	}
+		capture_path(ConfigureParams.Midi.sMidiOutFileName,
+		             sizeof(ConfigureParams.Midi.sMidiOutFileName),
+		             "hatari-midi-out.raw");
 	else
 		ConfigureParams.Midi.sMidiOutFileName[0] = '\0';
+	ConfigureParams.Midi.sMidiInFileName[0] = '\0';
+
+	value = retro_option("hatari_rs232_capture");
+	ConfigureParams.RS232.bEnableRS232 = value && !strcasecmp(value, "enabled");
+	if (ConfigureParams.RS232.bEnableRS232)
+		capture_path(ConfigureParams.RS232.szOutFileName,
+		             sizeof(ConfigureParams.RS232.szOutFileName),
+		             "hatari-rs232-out.raw");
+	else
+		ConfigureParams.RS232.szOutFileName[0] = '\0';
+	ConfigureParams.RS232.szInFileName[0] = '\0';
+
+	value = retro_option("hatari_printer_capture");
+	ConfigureParams.Printer.bEnablePrinting = value && !strcasecmp(value, "enabled");
+	if (ConfigureParams.Printer.bEnablePrinting)
+		capture_path(ConfigureParams.Printer.szPrintToFileName,
+		             sizeof(ConfigureParams.Printer.szPrintToFileName),
+		             "hatari-printer-out.raw");
+	else
+		ConfigureParams.Printer.szPrintToFileName[0] = '\0';
 
 	update_joystick_port_mapping();
 }
@@ -254,27 +295,42 @@ void RetroOptions_Apply(void)
 bool RetroOptions_Update(void)
 {
 	bool updated = false;
-	bool midi_was_enabled;
+	bool midi_was_enabled, rs232_was_enabled, printer_was_enabled;
 
 	if (!environment_cb ||
 	    !environment_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) ||
 	    !updated)
 		return false;
 
-	/* Midi_Init()/Midi_UnInit() are only ever called from
+	/* Midi_Init()/Midi_UnInit(), RS232_Init()/UnInit(), and
+	   Printer_Init()/UnInit() are only ever called from
 	   Main_InitSubsystems()/UnInitSubsystems() (src/main.c), never from
-	   Configuration_Apply() - so a runtime flip of hatari_midi_capture
-	   needs an explicit re-init here, or it would silently stay inert
-	   until the next full content reload. Safe to do here specifically
-	   (unlike inside RetroOptions_Apply(), which also runs as Main_Init()'s
-	   pre-init hook before CycInt exists): RetroOptions_Update() is only
-	   ever called from retro_run(), always after Main_Init() completed. */
+	   Configuration_Apply() - so a runtime flip of any of these capture
+	   options needs an explicit re-init here, or it would silently stay
+	   inert until the next full content reload. Safe to do here
+	   specifically (unlike inside RetroOptions_Apply(), which also runs
+	   as Main_Init()'s pre-init hook before CycInt exists - MIDI's
+	   Midi_UnInit() touches CycInt state, so calling it that early would
+	   be unsafe): RetroOptions_Update() is only ever called from
+	   retro_run(), always after Main_Init() completed. */
 	midi_was_enabled = ConfigureParams.Midi.bEnableMidi;
+	rs232_was_enabled = ConfigureParams.RS232.bEnableRS232;
+	printer_was_enabled = ConfigureParams.Printer.bEnablePrinting;
 	RetroOptions_Apply();
 	if (ConfigureParams.Midi.bEnableMidi != midi_was_enabled)
 	{
 		Midi_UnInit();
 		Midi_Init();
+	}
+	if (ConfigureParams.RS232.bEnableRS232 != rs232_was_enabled)
+	{
+		RS232_UnInit();
+		RS232_Init();
+	}
+	if (ConfigureParams.Printer.bEnablePrinting != printer_was_enabled)
+	{
+		Printer_UnInit();
+		Printer_Init();
 	}
 	return true;
 }

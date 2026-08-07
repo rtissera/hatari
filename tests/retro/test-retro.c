@@ -96,10 +96,18 @@ static bool env_cb(unsigned cmd, void *data)
 		   MIDI-enabled path with MIDI pre-configured on *before* the
 		   very first retro_init() ever runs - the exact scenario that
 		   crashed before RetroOptions_Update() (not Apply()) became the
-		   only place allowed to call Midi_UnInit()/Midi_Init(). Every
+		   only place allowed to call Midi_UnInit()/Midi_Init(). RS232 and
+		   printer capture are pre-enabled here too, exercising the same
+		   Main_InitSubsystems()-runs-before-the-TOS-check path (lower
+		   risk - RS232_UnInit()/Printer_UnInit() don't touch CycInt like
+		   Midi_UnInit() does - but worth locking in regardless). Every
 		   other option falls back to its default (NULL). */
-		variable->value = !strcmp(variable->key, "hatari_midi_capture") ?
-			"enabled" : NULL;
+		if (!strcmp(variable->key, "hatari_midi_capture") ||
+		    !strcmp(variable->key, "hatari_rs232_capture") ||
+		    !strcmp(variable->key, "hatari_printer_capture"))
+			variable->value = "enabled";
+		else
+			variable->value = NULL;
 		return true;
 	 }
 	 default:
