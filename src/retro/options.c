@@ -34,8 +34,21 @@ static struct retro_variable variables[] = {
 	{ "hatari_falcon_dsp",
 	  "Falcon DSP (only applies to the Falcon machine type); emulated|none|dummy" },
 	{ "hatari_harddisk_bus", "Hard disk bus; acsi|ide|scsi" },
+	{ "hatari_joystick_port1",
+	  "RetroPad 1 target; joystick1|joystick0|joypada|joypadb|parport1|parport2|none" },
+	{ "hatari_joystick_port2",
+	  "RetroPad 2 target; joystick0|joystick1|joypada|joypadb|parport1|parport2|none" },
+	{ "hatari_joystick_port3",
+	  "RetroPad 3 target; none|joystick0|joystick1|joypada|joypadb|parport1|parport2" },
+	{ "hatari_joystick_port4",
+	  "RetroPad 4 target; none|joystick0|joystick1|joypada|joypadb|parport1|parport2" },
 	{ NULL, NULL }
 };
+
+/* Reverse map: which RetroPad port (0-3), if any, drives a given Atari
+   JOYID_* slot - built by update_joystick_port_mapping() below and
+   consulted by JoyUI_ReadJoystick() (src/retro/joy_ui.c) every poll. */
+static int port_for_joyid[JOYSTICK_COUNT];
 
 static const char *retro_option(const char *key)
 {
@@ -76,6 +89,56 @@ static int option_number(const char *value, const int *values, int count,
 		if (number == values[i])
 			return (int)number;
 	return fallback;
+}
+
+static int joyid_for_target(const char *value, int fallback)
+{
+	if (!value)
+		return fallback;
+	if (!strcasecmp(value, "joystick0")) return JOYID_JOYSTICK0;
+	if (!strcasecmp(value, "joystick1")) return JOYID_JOYSTICK1;
+	if (!strcasecmp(value, "joypada")) return JOYID_JOYPADA;
+	if (!strcasecmp(value, "joypadb")) return JOYID_JOYPADB;
+	if (!strcasecmp(value, "parport1")) return JOYID_PARPORT1;
+	if (!strcasecmp(value, "parport2")) return JOYID_PARPORT2;
+	return -1; /* "none" or unrecognized */
+}
+
+static void update_joystick_port_mapping(void)
+{
+	/* Port count kept in sync with RETRO_HATARI_MAX_PORTS (main_retro.h)
+	   by inspection rather than a shared #include, to avoid pulling in
+	   main_retro.h's own environment_cb extern, which collides with this
+	   file's private one of the same name.
+
+	   Each port's fallback mirrors its option string's first (default)
+	   choice in variables[] above - ports 1/2 default to the swapped
+	   joystick0/1 pairing this adapter has always used, 3/4 default to
+	   unmapped. */
+	static const char *const port_keys[] = {
+		"hatari_joystick_port1", "hatari_joystick_port2",
+		"hatari_joystick_port3", "hatari_joystick_port4"
+	};
+	static const int port_defaults[] = {
+		JOYID_JOYSTICK1, JOYID_JOYSTICK0, -1, -1
+	};
+	int i, joyid;
+
+	for (i = 0; i < JOYSTICK_COUNT; ++i)
+		port_for_joyid[i] = -1;
+	for (i = 0; i < (int)(sizeof(port_keys) / sizeof(port_keys[0])); ++i)
+	{
+		joyid = joyid_for_target(retro_option(port_keys[i]), port_defaults[i]);
+		if (joyid >= 0 && joyid < JOYSTICK_COUNT)
+			port_for_joyid[joyid] = i;
+	}
+}
+
+int RetroOptions_JoystickPortFor(int joyid)
+{
+	if (joyid < 0 || joyid >= JOYSTICK_COUNT)
+		return -1;
+	return port_for_joyid[joyid];
 }
 
 void RetroOptions_SetEnvironment(retro_environment_t cb)
@@ -160,6 +223,8 @@ void RetroOptions_Apply(void)
 		ConfigureParams.DiskImage.nWriteProtection = WRITEPROT_AUTO;
 	else
 		ConfigureParams.DiskImage.nWriteProtection = WRITEPROT_OFF;
+
+	update_joystick_port_mapping();
 }
 
 bool RetroOptions_Update(void)

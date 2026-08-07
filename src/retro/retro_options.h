@@ -13,4 +13,8 @@ void RetroOptions_SetEnvironment(retro_environment_t cb);
 void RetroOptions_Apply(void);
 bool RetroOptions_Update(void);
 
+/* Which RetroPad port (0-3), if any, drives the given Atari JOYID_* slot
+   (src/includes/configuration.h). Returns -1 if none is configured. */
+int RetroOptions_JoystickPortFor(int joyid);
+
 #endif
